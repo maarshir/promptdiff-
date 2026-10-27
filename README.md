@@ -38,6 +38,6 @@ python run.py --prompts prompts/support_ticket.yaml --cases cases/support_ticket
 - Сбой сети считается отдельно и не выдаётся за плохой ответ.
 - Два поставщика, Anthropic и Groq. При превышении лимита программа ждёт столько, сколько попросил сервер.
 - Цена каждого варианта считается через [token-counter](https://github.com/maarshir/token-counter).
-- 134 теста, запускаются при каждом изменении.
+- 137 тестов, запускаются при каждом изменении.
 
 Почему всё устроено именно так: [docs/решения.md](docs/решения.md). Набор вопросов к документам из [doc-answers](https://github.com/maarshir/doc-answers) прогоняется здесь же.

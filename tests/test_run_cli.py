@@ -135,3 +135,27 @@ def test_dry_run_показывает_сколько_в_кэше(monkeypatch, tm
     assert cli.main(ARGS + ["--dry-run", "--cache-dir", str(tmp_path / "пусто")]) == 0
     assert "В кэше уже есть ответов: 0, пойдёт в модель: 14" in capsys.readouterr().out
     assert not (tmp_path / "пусто").exists()
+
+
+def test_нет_файла_с_промптами_без_трассировки(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_env", lambda: None)
+    assert cli.main(["--prompts", "нет.yaml", "--cases", "cases/support_ticket.yaml", "--dry-run"]) == 2
+    err = capsys.readouterr().err
+    assert "Нет такого файла: нет.yaml" in err
+    assert "Traceback" not in err
+
+
+def test_битый_yaml_понятная_ошибка(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(cli, "load_env", lambda: None)
+    bad = tmp_path / "cases.yaml"
+    bad.write_text("- id: a\n  input: [не закрыто\n", encoding="utf-8")
+    assert cli.main(["--prompts", "prompts/support_ticket.yaml", "--cases", str(bad), "--dry-run"]) == 2
+    assert "Не удалось прочитать YAML" in capsys.readouterr().err
+
+
+def test_ошибка_в_задачах_понятная(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(cli, "load_env", lambda: None)
+    bad = tmp_path / "cases.yaml"
+    bad.write_text("- id: a\n  input: текст\n  expect:\n    exact: yes\n", encoding="utf-8")
+    assert cli.main(["--prompts", "prompts/support_ticket.yaml", "--cases", str(bad), "--dry-run"]) == 2
+    assert "Ошибка во входном файле: Задача a, exact" in capsys.readouterr().err

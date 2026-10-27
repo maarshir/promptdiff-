@@ -15,13 +15,15 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 from core.cache import AnswerCache, cache_key, with_cache
-from core.cases import load_cases
+from core.cases import CaseError, load_cases
 from core.client import ask_many
 from core.pricing import estimate_upper, price_run, usd
 from core.providers import ANTHROPIC, GROQ, PROVIDERS, ProviderError, for_model
 from core.runner import disagreements, run, save, summarize
-from core.variants import load_variants
+from core.variants import VariantError, load_variants
 
 DEFAULT_MODEL = ANTHROPIC.default_model
 DEFAULT_CACHE = ".cache/answers"
@@ -164,8 +166,18 @@ def main(argv=None) -> int:
         return 2
     rpm = requests_per_minute(args.rpm, provider)
 
-    variants = load_variants(args.prompts)
-    cases = load_cases(args.cases)
+    try:
+        variants = load_variants(args.prompts)
+        cases = load_cases(args.cases)
+    except FileNotFoundError as err:
+        print(f"Нет такого файла: {err.filename}", file=sys.stderr)
+        return 2
+    except yaml.YAMLError as err:
+        print(f"Не удалось прочитать YAML: {err}", file=sys.stderr)
+        return 2
+    except (VariantError, CaseError) as err:
+        print(f"Ошибка во входном файле: {err}", file=sys.stderr)
+        return 2
     total = len(variants) * len(cases)
 
     cache = None if args.no_cache else AnswerCache(args.cache_dir)
