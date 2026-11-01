@@ -63,20 +63,34 @@ def contains_none(answer: str, forbidden: list[str]) -> bool:
     return not any(found(normalize(str(item)), low) for item in forbidden)
 
 
+def explain(answer: str, expect: dict) -> str | None:
+    """Почему ответ не прошёл: первое невыполненное условие. None, если прошёл.
+
+    Нужна для отчёта: «нет» без причины заставляет лезть в JSON за ответом.
+    """
+    if not expect:
+        return None
+
+    if "exact" in expect and not exact(answer, expect["exact"]):
+        return f"ожидалось ровно «{expect['exact']}»"
+    if "contains_all" in expect:
+        low = normalize(answer)
+        missing = [str(i) for i in expect["contains_all"] if not found(normalize(str(i)), low)]
+        if missing:
+            return "нет " + ", ".join(f"«{m}»" for m in missing)
+    if "contains_none" in expect:
+        low = normalize(answer)
+        extra = [str(i) for i in expect["contains_none"] if found(normalize(str(i)), low)]
+        if extra:
+            return "лишнее " + ", ".join(f"«{e}»" for e in extra)
+
+    return None
+
+
 def check(answer: str, expect: dict) -> bool:
     """Применяет все условия из описания задачи. Пустое описание ничего не проверяет.
 
     expect может содержать ключи: exact, contains_all, contains_none.
     Все указанные должны выполниться одновременно.
     """
-    if not expect:
-        return True
-
-    if "exact" in expect and not exact(answer, expect["exact"]):
-        return False
-    if "contains_all" in expect and not contains_all(answer, expect["contains_all"]):
-        return False
-    if "contains_none" in expect and not contains_none(answer, expect["contains_none"]):
-        return False
-
-    return True
+    return explain(answer, expect) is None

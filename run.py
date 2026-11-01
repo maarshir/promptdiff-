@@ -5,6 +5,9 @@
     python run.py --prompts prompts/support_ticket.yaml --cases cases/support_ticket.yaml
 
 Без ключа можно посмотреть, что будет отправлено: добавьте --dry-run.
+Отчёт по сохранённому прогону, тоже без ключа:
+
+    python run.py --report results/<файл>.json --report-out отчёт.md
 """
 
 import argparse
@@ -22,6 +25,7 @@ from core.cases import CaseError, load_cases
 from core.client import ask_many
 from core.pricing import estimate_upper, price_run, usd
 from core.providers import ANTHROPIC, GROQ, PROVIDERS, ProviderError, for_model
+from core.report import ReportError, build, load_run, to_markdown
 from core.runner import disagreements, run, save, summarize
 from core.variants import VariantError, load_variants
 
@@ -49,8 +53,9 @@ def load_env(path: str | Path = ".env") -> None:
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser(description="Сравнение вариантов промпта на наборе задач")
-    p.add_argument("--prompts", required=True, help="YAML с вариантами промпта")
-    p.add_argument("--cases", required=True, help="YAML с задачами")
+    p.add_argument("--prompts", help="YAML с вариантами промпта")
+    p.add_argument("--cases", help="YAML с задачами (для --report: откуда брать причины провалов, "
+                                   "по умолчанию файл из самого прогона)")
     p.add_argument("--model", default=None,
                    help=f"модель (по умолчанию PROMPTDIFF_MODEL, иначе {DEFAULT_MODEL} "
                         f"или {GROQ.default_model}, если задан только GROQ_API_KEY)")
@@ -67,7 +72,31 @@ def parse_args(argv=None):
     p.add_argument("--cache-dir", default=DEFAULT_CACHE, help=f"папка кэша ответов (по умолчанию {DEFAULT_CACHE})")
     p.add_argument("--prices", default=None,
                    help="свой файл цен token-counter (по умолчанию TOKEN_COUNTER_PRICES или встроенная таблица)")
-    return p.parse_args(argv)
+    p.add_argument("--report", metavar="JSON", default=None,
+                   help="не гонять модель, а собрать отчёт в Markdown по сохранённому прогону")
+    p.add_argument("--report-out", metavar="ФАЙЛ", default=None,
+                   help="куда записать отчёт (по умолчанию печатается)")
+    args = p.parse_args(argv)
+    if args.report_out and not args.report:
+        p.error("--report-out работает только вместе с --report")
+    if not args.report and not (args.prompts and args.cases):
+        p.error("нужны --prompts и --cases (или --report для отчёта по готовому прогону)")
+    return args
+
+
+def make_report(path: str, out: str | None, cases: str | None = None) -> int:
+    try:
+        text = to_markdown(build(load_run(path), cases))
+    except ReportError as err:
+        print(err, file=sys.stderr)
+        return 2
+    if out is None:
+        print(text, end="")
+        return 0
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    Path(out).write_text(text, encoding="utf-8")
+    print(f"Отчёт сохранён в {out}")
+    return 0
 
 
 def print_report(results, run_cost=None) -> None:
@@ -157,6 +186,8 @@ def pace(requests: int, rpm: float) -> str:
 def main(argv=None) -> int:
     load_env()
     args = parse_args(argv)
+    if args.report:
+        return make_report(args.report, args.report_out, args.cases)
     provider_name = args.provider or os.environ.get("PROMPTDIFF_PROVIDER") or None
     try:
         model = args.model or default_model(provider_name)
