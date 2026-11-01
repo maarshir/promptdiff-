@@ -6,7 +6,7 @@ import pytest
 import run as cli
 from core.checks import check, explain
 from core.pricing import RunCost, VariantCost
-from core.report import ReportError, build, load_run, to_markdown
+from core.report import ReportError, build, load_run, render, to_html, to_markdown
 from core.runner import Result, save
 
 CASES_YAML = """\
@@ -152,3 +152,55 @@ def test_cli_без_prompts_и_report(monkeypatch):
     monkeypatch.setattr(cli, "load_env", lambda: None)
     with pytest.raises(SystemExit):
         cli.main(["--cases", "cases/support_ticket.yaml"])
+
+
+def _with_script(run_json):
+    data = load_run(run_json)
+    for r in data["results"]:
+        if r["case"] == "order":
+            r["case"] = "<script>alert(1)</script>"
+            if r["variant"] == "b":
+                r["answer"] = "<img src=x onerror=alert(2)>"
+    data["meta"]["cases"] = None
+    return data
+
+
+def test_html_экранирует_текст(run_json):
+    page = to_html(build(_with_script(run_json)))
+    assert "<script" not in page
+    assert "<img" not in page
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
+    assert "&lt;img src=x onerror=alert(2)&gt;" in page
+
+
+def test_html_таблица_и_расхождения(run_json):
+    page = to_html(build(load_run(run_json)))
+    assert page.startswith("<!doctype html>")
+    assert "<table>" in page and "<td>a</td><td class=\"n\">3/3</td>" in page
+    assert "<h2>Расхождения</h2>" in page
+    assert "<code>order</code>: прошли a;" in page and "нет «order=48213»" in page
+    assert "<h2>Сбои</h2>" in page and "HTTP 529" in page
+
+
+def test_html_без_внешних_ссылок_и_скриптов(run_json):
+    page = to_html(build(load_run(run_json)))
+    assert "http://" not in page and "https://" not in page
+    assert "<script" not in page and "<link" not in page and "src=" not in page
+
+
+def test_формат_по_расширению(run_json, tmp_path):
+    report = build(load_run(run_json))
+    assert render(report, "r.html").startswith("<!doctype html>")
+    assert render(report, "R.HTM").startswith("<!doctype html>")
+    assert render(report, "r.md") == to_markdown(report)
+    assert render(report, None) == to_markdown(report)
+
+
+def test_cli_html(run_json, tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "load_env", lambda: None)
+    out = tmp_path / "r.html"
+    assert cli.main(["--report", str(run_json), "--report-out", str(out)]) == 0
+    assert "<h2>Расхождения</h2>" in out.read_text(encoding="utf-8")
+    md = tmp_path / "r.md"
+    assert cli.main(["--report", str(run_json), "--report-out", str(md)]) == 0
+    assert md.read_text(encoding="utf-8").startswith("# Отчёт promptdiff")

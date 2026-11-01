@@ -8,6 +8,7 @@
 Отчёт по сохранённому прогону, тоже без ключа:
 
     python run.py --report results/<файл>.json --report-out отчёт.md
+    python run.py --report results/<файл>.json --report-out отчёт.html
 """
 
 import argparse
@@ -25,7 +26,7 @@ from core.cases import CaseError, load_cases
 from core.client import ask_many
 from core.pricing import estimate_upper, price_run, usd
 from core.providers import ANTHROPIC, GROQ, PROVIDERS, ProviderError, for_model
-from core.report import ReportError, build, load_run, to_markdown
+from core.report import ReportError, build, load_run, render
 from core.runner import disagreements, run, save, summarize
 from core.variants import VariantError, load_variants
 
@@ -73,9 +74,9 @@ def parse_args(argv=None):
     p.add_argument("--prices", default=None,
                    help="свой файл цен token-counter (по умолчанию TOKEN_COUNTER_PRICES или встроенная таблица)")
     p.add_argument("--report", metavar="JSON", default=None,
-                   help="не гонять модель, а собрать отчёт в Markdown по сохранённому прогону")
+                   help="не гонять модель, а собрать отчёт по сохранённому прогону")
     p.add_argument("--report-out", metavar="ФАЙЛ", default=None,
-                   help="куда записать отчёт (по умолчанию печатается)")
+                   help="куда записать отчёт: .html даёт страницу, иначе Markdown (по умолчанию печатается)")
     args = p.parse_args(argv)
     if args.report_out and not args.report:
         p.error("--report-out работает только вместе с --report")
@@ -86,7 +87,7 @@ def parse_args(argv=None):
 
 def make_report(path: str, out: str | None, cases: str | None = None) -> int:
     try:
-        text = to_markdown(build(load_run(path), cases))
+        text = render(build(load_run(path), cases), out)
     except ReportError as err:
         print(err, file=sys.stderr)
         return 2

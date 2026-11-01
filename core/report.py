@@ -5,6 +5,7 @@
 задач из прогона (meta.cases) ещё на месте; иначе показывает начало ответа.
 """
 
+import html
 import json
 from dataclasses import dataclass, field, fields
 from decimal import Decimal, InvalidOperation
@@ -179,3 +180,80 @@ def to_markdown(report: Report) -> str:
         lines += [f"- {_md(v)} / `{_md(c)}`: {_md(e)}" for v, c, e in report.errors]
 
     return "\n".join(lines) + "\n"
+
+
+CSS = """
+body { font: 15px/1.5 system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; padding: 0 1rem;
+       color: #1f2328; background: #fff; }
+table { border-collapse: collapse; margin: 1rem 0; }
+th, td { border: 1px solid #d0d7de; padding: .3rem .6rem; }
+td.n { text-align: right; font-variant-numeric: tabular-nums; }
+th { background: #f6f8fa; text-align: left; }
+.bad { color: #b42318; }
+code { background: #f6f8fa; padding: 0 .2rem; }
+@media (prefers-color-scheme: dark) {
+  body { color: #e6edf3; background: #0d1117; }
+  th, code { background: #161b22; }
+  th, td { border-color: #30363d; }
+  .bad { color: #ff7b72; }
+}
+"""
+
+
+def _h(text) -> str:
+    return html.escape(str(text), quote=True)
+
+
+def to_html(report: Report) -> str:
+    """Одна страница без внешних ссылок и скриптов. Весь текст из прогона экранирован."""
+    meta = report.meta
+    about = [f"модель {meta['model']}" if meta.get("model") else None,
+             f"поставщик {meta['provider']}" if meta.get("provider") else None,
+             f"задачи {meta['cases']}" if meta.get("cases") else None,
+             f"сохранён {meta['saved_at']}" if meta.get("saved_at") else None]
+    about = ", ".join(a for a in about if a)
+
+    out = ["<!doctype html>", '<html lang="ru">', "<head>", '<meta charset="utf-8">',
+           '<meta name="viewport" content="width=device-width, initial-scale=1">',
+           "<title>Отчёт promptdiff</title>", f"<style>{CSS}</style>", "</head>", "<body>",
+           "<h1>Отчёт promptdiff</h1>"]
+    if about:
+        out.append(f"<p>{_h(about[0].upper() + about[1:])}</p>")
+
+    out += ["<table>", "<thead><tr><th>вариант</th><th>прошло</th><th>нет</th><th>сбой</th>"
+            "<th>токены вх/вых</th><th>цена</th></tr></thead>", "<tbody>"]
+    for r in report.rows:
+        out.append(f"<tr><td>{_h(r.variant)}</td><td class=\"n\">{r.passed}/{r.total}</td>"
+                   f"<td class=\"n\">{r.failed}</td><td class=\"n\">{r.errors}</td>"
+                   f"<td class=\"n\">{r.input_tokens}/{r.output_tokens}</td>"
+                   f"<td class=\"n\">{_h(r.price)}</td></tr>")
+    out += ["</tbody>", "</table>"]
+    if report.cost_note:
+        out.append(f"<p>{_h(report.cost_note)}</p>")
+
+    out.append("<h2>Расхождения</h2>")
+    if not report.diffs:
+        out.append("<p>Нет: на каждой задаче варианты ответили одинаково по итогу проверок.</p>")
+    else:
+        out.append("<ul>")
+        for case, marks in report.diffs.items():
+            ok = ", ".join(_h(m.variant) for m in marks if m.passed)
+            bad = "; ".join(f"{_h(m.variant)} ({_h(m.reason)})" for m in marks if not m.passed)
+            out.append(f"<li><code>{_h(case)}</code>: прошли {ok}; "
+                       f"<span class=\"bad\">не прошли {bad}</span></li>")
+        out.append("</ul>")
+
+    if report.errors:
+        out += ["<h2>Сбои</h2>", "<p>Ответа нет, промпт тут ни при чём.</p>", "<ul>"]
+        out += [f"<li>{_h(v)} / <code>{_h(c)}</code>: {_h(e)}</li>" for v, c, e in report.errors]
+        out.append("</ul>")
+
+    out += ["</body>", "</html>"]
+    return "\n".join(out) + "\n"
+
+
+def render(report: Report, out: str | Path | None) -> str:
+    """Формат по расширению файла: .html или .htm даёт страницу, иначе Markdown."""
+    if out is not None and Path(out).suffix.lower() in (".html", ".htm"):
+        return to_html(report)
+    return to_markdown(report)
