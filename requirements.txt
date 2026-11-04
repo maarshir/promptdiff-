@@ -2,4 +2,4 @@ pytest==8.3.4
 pytest-asyncio==0.25.0
 httpx==0.28.1
 pyyaml==6.0.2
-token-counter @ git+https://github.com/maarshir/token-counter@af45b0d863cbdc09d7e7500fafb93004d64b5494
+token-counter @ git+https://github.com/maarshir/token-counter@ccc7a0cbb4d1f5881824c165276e5583809eb788
